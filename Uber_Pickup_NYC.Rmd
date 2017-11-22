@@ -1,0 +1,529 @@
+---
+title: "9605100-pi2"
+author: "Xiaoran Chu"
+output:
+  html_document: default
+  pdf_document: default
+Student No: 9605100
+---
+# Read csv files into R
+Before doing any tasks, data need to be read into R:
+
+## Plan of Attack
+Since there are multiple(in this case, there are 6) files in the same dataset folder, it would be very inefficient and tedious.
+
+After spending some time searching on Google, I found out two alternatives:
+1. create a function to merge multiple files into one master data frame then call the function on the 6 uber row data files
+
+Reference:
+[use function to read all files](https://www.r-bloggers.com/merging-multiple-data-files-into-one-data-frame/)
+
+2. use for loop to combine all the files by rows
+
+3. read each file separately one by one them bind them 
+
+In my opinion, the second option is the best since all the files needed are in the same directory. 
+
+If there are many files in the same directory and only some specific ones are needed then the first option will be the best.
+
+## Plan Implementation
+
+Step 1: Downdload the zip file from the link provided in the Pi2 Instruction
+        saved in direcotry: /Users/kerrychu/Desktop/509/Portfolio2/pi2_data
+        
+Step 2: Read all the csv files into one dataframe in R by using a for loop
+
+```{r}
+# use list.file() function to produce a character vector of the names of the files in the directory: pi2_data
+# I also used bash pwd command to check the pathway of the file
+wd<-getwd()
+setwd(wd)
+filenames <- list.files(path = "./Data", full.names = T)
+#set the intitial value of the varialbe uber_raw_data to 0 which is  NULL
+uber_raw_data<- NULL
+# so for i=1 to 6, uber_raw_data just combines all the 6 files in that directory by row
+for (i in 1:6)
+{
+  uber_raw_data<-rbind(uber_raw_data,read.csv(filenames[i]))
+}
+
+uber_raw_data<-subset(uber_raw_data, select = c(Date.Time, Lat, Lon))
+```
+
+Reference:
+[read all files in the same directory using for loop](https://www.slideshare.net/yogesh_khandelwal/merge-multiple-csv-in-single-data-frame-using-r)
+
+Step 3: reorder the dataframe according to the column Data.Time
+```{r}
+uber_raw_data<-uber_raw_data[order(as.Date(uber_raw_data$Date.Time, format="%m/%d/%Y")),]
+```
+
+reference:
+[reorder dataframe according to the value in 1 specific column](http://stackoverflow.com/questions/6246159/how-to-sort-a-data-frame-by-date-in-r)
+
+
+# Task 1: Data Analysis
+
+## Task 1.1
+
+In what day of the week are the largest number of Uber pick ups? and the minimum? Perform this analysis both calculating statistics from the dataset and visualising the data to show daily trends in pick ups.
+
+
+### Plan of Attack A
+
+Date needed for this task:
+Weekday of the pickup
+Each weekday's pickup frequncy
+
+However, the date and time are combined together in 1 column in the file. Therefore, the first question to answer is: 
+      how to spearate the Date and Time in one column? 
+
+Then, the following questions also need to be answered:
+    After separating the date and time, how to get the weekdays?
+    After convert date to weekdays, how to calcuate the frequency of the weekdays?
+    what's the best visualization element for this task?
+    
+With searching and experimenting the questions, here are the implementaton:
+
+### Plan Implementation 
+
+#### Step 1: Split the column date.time into two columns: date amd time
+
+```{r}
+#separate value time from the dataframe and store it
+pickup_time <- format(as.POSIXct(strptime(uber_raw_data$Date.Time,"%m/%d/%Y %H:%M:%S",tz="")), format="%H:%M:%S")
+
+#separate the value data from dataframe and store it
+pickup_date <- format(as.POSIXct(strptime(uber_raw_data$Date.Time,"%m/%d/%Y %H:%M:%S",tz="")), format="%m/%d/%Y")
+
+##create another column Time to the end of the column fill column with the data separeted from Data.Time
+uber_raw_data$Time <- pickup_time
+
+#create another column Date to the end of the column fill column with the data separeted from Data.Time
+uber_raw_data$Date <- pickup_date
+```
+
+Reference
+[sparate date and time from 1 column](https://stats.stackexchange.com/questions/147063/r-how-to-separate-date-time-data-types)
+
+#### Step 2: Add another column in which dates are converted into weekdays
+
+```{r}
+#create another column weekdays to the end of the column fill column with the data converted from the column Date
+uber_raw_data$Weekday <- weekdays(as.Date(uber_raw_data$Date.Time,format="%m/%d/%Y"))
+```
+
+Refernece:
+[convert date into weekdays](http://stackoverflow.com/questions/9216138/find-the-day-of-a-week-in-r)
+
+#### Step 3: Produce Statistics
+
+#### Problem Analysis
+
+In order to find out which days have the most pickups and which days has the least, the only column matters at the moment is Weekdays. Calculate the frequencies of each weekday in the column will solve the problem.
+
+```{r}
+#count the frequency of the value in column Weekday
+pickup_frequency<- as.data.frame(table(uber_raw_data$Weekday))
+
+#rename the header so that it's more conveninient to do step 4 visualization
+names(pickup_frequency)<- c("Weekday","Pickups")
+
+#reorder the table according to Weekdays, so that when it comes to data visualization the weekdays will be in the right order
+pickup_frequency$Weekday<- factor(pickup_frequency$Weekday, levels=c("Monday",
+    "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday","Sunday"))
+pickup_frequency<-pickup_frequency[order(pickup_frequency$Weekday),]
+
+
+#show the weekday with most pickups along with the frequency
+pickup_frequency[which.max(pickup_frequency$Pickups),]
+#show the weekday with least pickups along with the frequency
+pickup_frequency[which.min(pickup_frequency$Pickups),]
+```
+Reference
+[reorder data frame by the value of one column( weekday)](http://stackoverflow.com/questions/10309564/reorder-factor-levels-by-day-of-the-week-in-r)
+
+#### Step 4: Statistics Visualization
+
+Since the main purpose of visualizing the data is to compare to see which day has the most pickups and which day has the least, a bar graph is the best option. Since it is one of the most accurate visual elements(reference, week7 lecture slides page 46) and it is very suitable for comparison(reference: week7 lecture slides page 50).
+
+```{r}
+library(ggplot2)
+require(ggplot2)
+
+#since y is a column, we need to use stat="identity" to show both x and y axeses
+ggplot(data=pickup_frequency, aes(x = Weekday, y=Pickups, fill=Weekday))+geom_bar(stat = "identity")+ggtitle(label = "Weekday Pickup Comparison")+theme_minimal()+theme(plot.title = element_text(hjust = 0.5, lineheight = 0.8, face = "bold"))+xlab("Weekdays")+ylab("Number of Pickups")
+```
+
+#### Post Analysis
+
+The Plan of Attack A has produced a relatively general bar graph of the total pickups of the date listed in the master data frame. It is good for the readers to have a general idea of the pick up trend of each weekday and maybe advise Uber drivers to go out more in busy weekdays, however, it fails to provide a sightful presentation of the data. 
+
+After spending sometime comtemplating, a better idea occurred to me and thus Plan of Attack B was produced. 
+
+### Plan of Attack B
+
+#### Step 1: Get the tools ready
+
+First of all, require all the packages needed to get the job done. 
+
+```{r}
+#require every library needed for data frame manipulation
+library(RColorBrewer)
+require(RColorBrewer) 
+library(plyr)
+require(scales)
+```
+
+#### Step 2: Data Manipulation 
+
+Second, Manipulate the data frame to make it suitable for plotting.
+
+```{r}
+#add column Month to the master data frame
+uber_raw_data$Month<-months(as.POSIXct(uber_raw_data$Date, format="%m/%d/%Y"))
+```
+
+```{r}
+#subset the data so that the size is smaller, and it is easier to plot
+weekly_trend <- subset(uber_raw_data, select = c(Weekday, Month))
+
+#count the pickups by two cololumns: weekday and month
+weekly_trend<- ddply(weekly_trend, .(weekly_trend$Weekday, weekly_trend$Month), nrow)
+
+#change the column name of the new data frame
+names(weekly_trend) <- c("Weekday", "Month","Pickups")
+
+#reorder the data frame according to two columns: weekday and month
+weekly_trend$Weekday <- factor(weekly_trend$Weekday, levels=c("Monday",
+    "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday","Sunday"))
+weekly_trend$Month<- factor(weekly_trend$Month, levels = c("April", "May", "June", "July","August","September"))
+weekly_trend<-weekly_trend[with(weekly_trend, order(Month, Weekday)),]
+```
+
+
+#### Step 3: Data Visualization
+
+```{r}
+#plot the data
+ggplot(weekly_trend,aes(Weekday, Pickups)) + 
+    geom_bar(aes(fill = Month),stat = "identity",position = "dodge")+scale_fill_brewer(palette = "Accent") +ggtitle(label = "Weekday Pickup Each Month")+theme_minimal()+theme(plot.title = element_text(hjust = 0.5, lineheight = 0.8, face = "bold"))+xlab("Weekdays")+ylab("Number of Pickups")
+```
+
+#### Post Analysis
+This bar graph is more detailed. I imagine if Uber wants to know if their business is increasing on a monthly basis. This graph will be very ideal. Since it's for compare different items, I used the bar chart again. Also, in order to compare, I chose palette "Accent" to distinguish diffferent months clearly.
+
+Also, I noticed that the busiest day in each month is different. Maybe it will lead Uber to analyse why the busiest day of each months varies and how to cope with the change with their notification system. I could come up with some hypothesis, maybe in June and July, the students are in holildays so they don't have to go out on Fridays and just go out on Mondays or Tuesdays to avoid the crowded bars or movie theaters. (A lot of imagination floating here.)
+
+#### Lessons Learned from doing  Task 1.1
+
+1. If using two themes in ggplot2, it's better to put the background them analyst want first then the them with title. If reversed, the title will not be in center as desired.
+
+2. RColorBrewer is a package that provides more coloring options (the palette) for data analysts who have an artsy side of them.  Use display.brewer.all() command to browse all palette choices
+
+3. package plyr is composed by tools for splitting, applying and combining data all the package descriptions are in the lower right section of R studio, sometimes it is easier to search key words of what purpose the data analyst want to achieve in the package search and go from there. So that more specific search can be done through Google.
+
+## Task 1.2
+
+How did the use of Uber in NYC trend over the months considered in the dataset? Does it increase? Perform this analysis through visualisation.
+
+### Plan of Attack A
+
+Date needed for this task:
+Month 
+Each Month's pickup frequncy
+
+With task 1.1's experience, I already know which questions to answer for this task:
+
+    How to get the months? (already did in task 1.1)
+    How to calcuate the frequency of the months?
+    What's the best visualization element for this task?
+
+### Plan Implementation A
+
+#### Step 1: Data Manipulation
+```{r}
+#Count the frequency of each month
+mpickups<-as.data.frame(table(uber_raw_data$Month))
+names(mpickups)<- c("Month","Pickups")
+```
+
+```{r}
+#reorder the table accordiing to mouth so that it is easier to plot in the next step
+mpickups$Month<- factor(mpickups$Month, levels = c("April", "May", "June", "July","August","September"))
+mpickups<-mpickups[order(mpickups$Month),]
+```
+
+####Step 2:  Data Visulization 
+
+```{r}
+#Plot
+ggplot(mpickups, aes(x=Month, y=Pickups, group=1))+geom_point(color="dark green")+geom_line(color="orange")+ggtitle(label = "Trend over the Months by Month")+theme_minimal()+theme(plot.title = element_text(hjust=0.5, lineheight = .8, face = "bold"))+ylab("Number of Pickups")
+```
+
+#### Post Analysis
+
+This is a very simple graph to show that the pickups are growing month by month, however, it doesn't tell the reader what happened betweent the months or any other details.
+
+### Plan of Attack B
+Inspired by the task.1.1 plan B. I swapped the Month with Weekdays: using Months in x axis and weekdays for coloring.
+
+```{r}
+#Bar graph
+ggplot(weekly_trend,aes(Month, Pickups)) + 
+    geom_bar(aes(fill = Weekday),stat = "identity",position = "dodge")+scale_fill_brewer(palette = "Set2") +ggtitle(label = "Monthly Trend by Weekday")+theme_minimal()+theme(plot.title = element_text(hjust = 0.5, lineheight = 0.8, face = "bold"))+xlab("Month")+ylab("Number of Pickups")
+```
+
+####Post Analysis
+
+This graph shows the performance of each weekday in a the 6 months. I realized that this one is actually better than the task 1.1 plan B to show the busiest weedays of each month. However, the downside of this graph is that is cannot show directly which month has more business than other months.
+
+### Plan of Attack C
+
+#### Step 1: Data Manipulation 
+
+```{r}
+#subset the data so that the size is smaller, and it is easier to plot
+monthly_trend <- subset(uber_raw_data, select = c(Date, Month))
+
+#count the pickups by two cololumns: weekday and month
+monthly_trend<- ddply(monthly_trend, .(monthly_trend$Date, monthly_trend$Month), nrow)
+
+#change the column name of the new data frame
+names(monthly_trend) <- c("Date", "Month","Pickups")
+
+#Change the data type of the date column into date so that it will be easier to add breaks in x axis later in plotting
+monthly_trend$Date <- as.character.Date(monthly_trend$Date)
+monthly_trend$Date <-as.Date(monthly_trend$Date, format = "%m/%d/%Y")
+```
+
+#### Step 2: Date Visualization
+
+```{r}
+#Plot
+ggplot(monthly_trend, aes(Date, Pickups))+geom_line(aes(color=Month))+ geom_smooth(method = 'loess',color="red")+scale_x_date(breaks = date_breaks("9 days"))+ggtitle(label = "Trend over the Months by Date")+theme_minimal()+theme(plot.title = element_text(hjust=0.5, lineheight = .8, face = "bold"),axis.text.x = element_text(angle=90))+ylab("Number of Pickups")
+```
+
+
+#### Post Analysis
+
+This graph is more detailed than plan A and is easier to see the trend than plan B. Readers can see more about what's happening each months. Not only can the readers see the general performance of the 6 months but also relatively compare the performance of each month.
+
+
+## Task 1.3
+
+How do pick up patterns change over time of day? What times of the day are the most popular in terms of pick ups? Perform this analysis through visualisation.
+
+### Plan of Attack 
+
+Data needed for this task:
+Time
+Month (for easier grouping)
+
+### Plan Implementation
+
+#### Step 1: Data Manipulation
+
+```{r}
+# Select the data needed for this task
+daily_trend <- subset(uber_raw_data, select = c(Time, Month))
+
+#Change the time format to simply showing the hour so that it will be easier for regrouping the file and plotting (if name of x axis is too long, it will not be clear and pretty)
+H<-format(as.POSIXct(strptime(daily_trend$Time, "%H:%M:%S", tz="")), format="%H")
+daily_trend$Time <- H
+
+#convert the time column into class time
+daily_trend$Time <- as.character.Date(daily_trend$Time, format="%H")
+
+#count the pickups by two cololumns: time and month
+daily_trend<- ddply(daily_trend, .(daily_trend$Time, daily_trend$Month), nrow)
+names(daily_trend)<- c("Hour","Month","Pickups")
+```
+
+
+#### Step 2: Data Visualization
+
+```{r}
+# plot the data - bar graph
+ggplot(daily_trend, aes(Hour, Pickups, fill=Month))+geom_bar(stat = "identity")+ggtitle(label = "Trend Over Time of the Day")+theme_minimal()+theme(plot.title = element_text(hjust=0.5, lineheight = .8, face = "bold"))+xlab("Hour")+ylab("Number of Pickups")
+```
+
+```{r}
+#line graph
+ggplot(daily_trend, aes(Hour, Pickups, group=Month))+geom_line(aes(color=Month))+ggtitle(label = "Trend Over Time of the Day")+theme_minimal()+theme(plot.title = element_text(hjust=0.5, lineheight = .8, face = "bold"))+xlab("Hour")+ylab("Number of Pickups")
+```
+
+
+```{r}
+#Boxplot
+ggplot(data=daily_trend, aes(factor(Hour),Pickups))+geom_boxplot(varwidth = T, color="dodgerblue")+ggtitle(label = "Trend Over Time of the Day")+theme_minimal()+theme(plot.title = element_text(hjust=0.5, lineheight = .8, face = "bold"))+xlab("Hour")+ylab("Number of Pickups")+scale_y_continuous(breaks = seq(0,80000, by=5000))
+```
+
+#### Post Analysis
+I used barplot, lineplot and boxplot  the data just want to see which one is better. Obviously the line plotting is better to show the trend while bar plotting is better to show the busiest times of the day. However, the line plot is also better than bar in a way that it shows the same pattern shared by all six months and the busiest months out of the six.
+
+In general, I think the boxplot is better since it is 
+1) very good at statistics summary 
+2) can show not only correlation and median but the range of data
+3) is able to show mean if needed.
+
+# Task 2: Spatial Analysis
+
+Note: Since the master file is too big. My Rstudio has crashed so many times when I tried to do point and density plot on the master data frame. Therefore I didn't plot at the begining. However, I used both point and density plot in task 2.1 and 2.2.
+
+## Preparation
+1st, load all the tools that is going to be needed in this task 
+
+```{r}
+#Load everything needed for the task
+library(evaluate)
+library(ggmap)
+require(maps)
+library(mapproj)
+library(scales)
+require(scales)
+```
+
+
+2nd, Get the map ready
+
+```{r}
+#download the map of the NYC manhattan area 
+NYC_map <- get_map(location="Manhattan", zoom=12)
+#save the visual map
+NYC <- ggmap(NYC_map)
+```
+
+
+## Task 2.1
+
+Show how the number of pick up vary per day of the week and according to location. 
+
+### Plan of Attack
+
+Data needed for this task
+Weekdays
+Longitude
+Latitude
+
+### Plan Implementation
+
+#### Step 1: Data Manipulation
+
+```{r}
+# Select the data needed for this task
+NYC_weekday_pickups <- subset(uber_raw_data, select = c(Lat, Lon, Weekday))
+#
+# reorder the data according to the weekdays
+NYC_weekday_pickups$Weekday<- factor(NYC_weekday_pickups$Weekday, levels=c("Monday",
+    "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday","Sunday"))
+NYC_weekday_pickups<-NYC_weekday_pickups[order(NYC_weekday_pickups$Weekday),]
+```
+
+
+#### Step 2: Data Visualization
+
+```{r}
+#Plot point
+NYC+geom_point(aes(x = Lon, y = Lat, color="red"), shape=46, alpha=1/100, data=NYC_weekday_pickups)+facet_wrap(~Weekday) 
+```
+[shape of geom_ploting](http://sape.inf.usi.ch/quick-reference/ggplot2/shape)
+
+#### Code Explanation-point
+
+NYC is the map.
+
+Geom_point will plot the data into little dots.
+I set the x axis as Longitude and y axis as Latitude by using aes() in which I also set the color to red.
+I used shape 46 because it is the smallest shape in geom_point. Considering that the data is very large, this is really necessary. 
+
+Then I separate the data by weekdays using face_wrap() so that the visualized data looks bigger than face_grid where the visualized data is arranged in a row and is very small.
+
+Moreover, I set the alpha value to a very low point giving the color high transparency so that the color will not block the map and the lighter the color the less pickups there are.
+
+```{r}
+##density 
+NYC + stat_density2d(aes(x = Lon, y = Lat, fill = ..level.., alpha=..level..), size = 8, bins = 30, alpha=0.5, data = NYC_weekday_pickups, geom = "polygon")+scale_fill_gradient(low="blue", high = "orange")+facet_wrap(~Weekday)
+```
+
+#### Code Explanation-density 
+
+I used the sat_density2d to plot the data in which I used aes()to set the x and y axes, make the fill degree and
+
+## Task 2.2
+
+Show how the number of pick up vary per month and according to location.
+
+### Plan of Attack
+
+Data needed for this task
+Longitude
+Latitude
+
+### Plan Implementation
+
+#### Step 1: Data Manipulation
+
+```{r}
+# Select the data needed
+NYC_monthly_pickups <- subset(uber_raw_data, select = c(Lat, Lon, Month))
+NYC_monthly_pickups$Month<- factor(NYC_monthly_pickups$Month, levels = c("April", "May", "June", "July","August","September"))
+NYC_monthly_pickups<-NYC_monthly_pickups[order(NYC_monthly_pickups$Month),]
+```
+
+#### Step 1: Data Visualization
+
+```{r}
+#point ploting
+NYC + geom_point(aes(x = Lon, y = Lat, color=Month), alpha=1/200, shape=46,  data = NYC_monthly_pickups)+facet_wrap(~Month)
+```
+
+
+```{r}
+#density plotting
+NYC + stat_density2d(aes(x = Lon, y = Lat, fill = ..level.., alpha=..level..), size = 8, bins = 30, alpha=0.5, data = NYC_monthly_pickups, geom = "polygon")+scale_fill_gradient(low="blue", high = "orange")+facet_wrap(~Month)
+```
+
+
+## Task 2.3
+
+Show how the number of pick up vary per hour of the day and according to location.
+
+### Plan of Attack
+
+Data needed for this task:
+Time
+Longitude
+Latitude
+
+### Plan Implementation
+
+#### Step 1: Data Manipulation
+
+```{r}
+# select the data needed for this task
+time_plotting <- subset(uber_raw_data, select = c(Time, Lat, Lon))
+
+#Change the time format to simply showing the hour
+H<-format(as.POSIXct(strptime(time_plotting$Time, "%H:%M:%S", tz="")), format="%H")
+time_plotting$Time <- H
+```
+
+#### Step 2: Data Visualization
+
+```{r}
+NYC + stat_density2d(aes(x = Lon, y = Lat, fill = ..level.., alpha=..level..), size = 8, bins = 30, alpha=0.8, data = time_plotting, geom = "polygon")+scale_fill_gradient(low="blue", high = "orange")+facet_wrap(~Time)
+```
+
+
+## Conclusion of Task 2
+
+1. It can be seen that Mahattan is the busiest area in NYC, the freqency goes down as it goes further away from Mahattan.
+
+2.It also can be concluded that Manhttan is an extremely prosperous area because no matter what month what day what time it is, there will always be people calling uber. It's like the night never sleeps.
+
+3.This may be because there are so many places of interests to visit, such as: Time Square, Empire State Building, Central Park Zoo and so on. And come on, it's New York City! Who wouldn't want a romantic date at the top of the Empire State Buidling at night? 
+
+4. The Map Visualiztion actually shows the same pattern with the graph visualization in terms of buisest hours, days, and months. However, it gives more geospatial information.
+
+5. Surprisingly, the East Elmhurst and it's surroundings are pretty busy every day as well even tho on the map there are only two small dots. I googled something, it may be because first, it is ver culturally diversed area full of hustles and bustles; second, there is only one Bridge to go to Rikes Island which is located within that area. 
