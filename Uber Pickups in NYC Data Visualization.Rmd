@@ -1,0 +1,296 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+title: "Uber Pickups in NYC Data Visualization"
+author: "Kerry Chu"
+output:
+  html_document: default
+  pdf_document: default
+
+---
+# Read csv files into R
+
+```{r}
+# use list.file() function to produce a character vector of the names of the files in the directory: pi2_data
+filenames <- list.files(path = "/Users/kerrychu/Desktop/uber_data", full.names = T)
+#set the intitial value of the varialbe uber_raw_data to 0 which is  NULL
+uber_raw_data<- NULL
+# so for i=1 to 6, uber_raw_data just combines all the 6 files in that directory by row
+for (i in 1:6)
+{
+  uber_raw_data<-rbind(uber_raw_data,read.csv(filenames[i]))
+}
+# select columns of interests
+uber_raw_data<-subset(uber_raw_data, select = c(Date.Time, Lat, Lon))
+```
+
+reorder the dataframe according to the column Data.Time
+```{r}
+uber_raw_data<-uber_raw_data[order(as.Date(uber_raw_data$Date.Time, format="%m/%d/%Y")),]
+```
+
+# Manipulate the Data for Future Plottiing
+
+## Split the column date.time into two columns: date amd time
+
+```{r}
+#separate value time from the dataframe and store it
+pickup_time <- format(as.POSIXct(strptime(uber_raw_data$Date.Time,"%m/%d/%Y %H:%M:%S",tz="")), format="%H:%M:%S")
+
+#separate the value data from dataframe and store it
+pickup_date <- format(as.POSIXct(strptime(uber_raw_data$Date.Time,"%m/%d/%Y %H:%M:%S",tz="")), format="%m/%d/%Y")
+
+##create another column Time to the end of the column fill column with the data separeted from Data.Time
+uber_raw_data$Time <- pickup_time
+
+#create another column Date to the end of the column fill column with the data separeted from Data.Time
+uber_raw_data$Date <- pickup_date
+```
+
+
+## Add another column in which dates are converted into weekdays
+
+```{r}
+#create another column weekdays to the end of the column fill column with the data converted from the column Date
+uber_raw_data$Weekday <- weekdays(as.Date(uber_raw_data$Date.Time,format="%m/%d/%Y"))
+```
+
+## Produce Simple Statistics
+
+```{r}
+#count the frequency of the value in column Weekday
+pickup_frequency<- as.data.frame(table(uber_raw_data$Weekday))
+
+#rename the header so that it's more conveninient to do step 4 visualization
+names(pickup_frequency)<- c("Weekday","Pickups")
+
+#reorder the table according to Weekdays, so that when it comes to data visualization the weekdays will be in the right order
+pickup_frequency$Weekday<- factor(pickup_frequency$Weekday, levels=c("Monday",
+    "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday","Sunday"))
+pickup_frequency<-pickup_frequency[order(pickup_frequency$Weekday),]
+
+
+#show the weekday with most pickups along with the frequency
+pickup_frequency[which.max(pickup_frequency$Pickups),]
+#show the weekday with least pickups along with the frequency
+pickup_frequency[which.min(pickup_frequency$Pickups),]
+```
+
+
+# Visualization by Weekdays 1
+
+```{r}
+library(ggplot2)
+require(ggplot2)
+
+#since y is a column, we need to use stat="identity" to show both x and y axeses
+
+ggplot(data=pickup_frequency, aes(x = Weekday, y=Pickups, fill=Weekday))+geom_bar(stat = "identity")+ggtitle(label = "Weekday Pickup Comparison")+theme_minimal()+theme(plot.title = element_text(hjust = 0.5, lineheight = 0.8, face = "bold"))+xlab("Weekdays")+ylab("Number of Pickups")
+```
+
+# Visualization by Weekdays 2
+
+First of all, require all the packages needed to get the job done. 
+
+```{r}
+#require every library needed for data frame manipulation
+library(RColorBrewer)
+require(RColorBrewer) 
+library(plyr)
+require(scales)
+```
+
+Second, Manipulate the data frame to make it suitable for plotting.
+
+```{r}
+#add column Month to the master data frame
+uber_raw_data$Month<-months(as.POSIXct(uber_raw_data$Date, format="%m/%d/%Y"))
+```
+
+```{r}
+#subset the data so that the size is smaller, and it is easier to plot
+weekly_trend <- subset(uber_raw_data, select = c(Weekday, Month))
+
+#count the pickups by two cololumns: weekday and month
+weekly_trend<- ddply(weekly_trend, .(weekly_trend$Weekday, weekly_trend$Month), nrow)
+
+#change the column name of the new data frame
+names(weekly_trend) <- c("Weekday", "Month","Pickups")
+
+#reorder the data frame according to two columns: weekday and month
+weekly_trend$Weekday <- factor(weekly_trend$Weekday, levels=c("Monday",
+    "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday","Sunday"))
+weekly_trend$Month<- factor(weekly_trend$Month, levels = c("April", "May", "June", "July","August","September"))
+weekly_trend<-weekly_trend[with(weekly_trend, order(Month, Weekday)),]
+```
+
+Data Visualization
+
+```{r}
+#plot the data
+ggplot(weekly_trend,aes(Weekday, Pickups)) + 
+    geom_bar(aes(fill = Month),stat = "identity",position = "dodge")+scale_fill_brewer(palette = "Accent") +ggtitle(label = "Weekday Pickup Each Month")+theme_minimal()+theme(plot.title = element_text(hjust = 0.5, lineheight = 0.8, face = "bold"))+xlab("Weekdays")+ylab("Number of Pickups")
+```
+
+# Data Visualization by Months 1
+
+```{r}
+#Count the frequency of each month
+mpickups<-as.data.frame(table(uber_raw_data$Month))
+names(mpickups)<- c("Month","Pickups")
+```
+
+```{r}
+#reorder the table accordiing to mouth so that it is easier to plot in the next step
+mpickups$Month<- factor(mpickups$Month, levels = c("April", "May", "June", "July","August","September"))
+mpickups<-mpickups[order(mpickups$Month),]
+```
+
+
+```{r}
+#Plot
+ggplot(mpickups, aes(x=Month, y=Pickups, group=1))+geom_point(color="dark green")+geom_line(color="orange")+ggtitle(label = "Trend over the Months by Month")+theme_minimal()+theme(plot.title = element_text(hjust=0.5, lineheight = .8, face = "bold"))+ylab("Number of Pickups")
+```
+
+# Data Visualization by Months 2
+
+```{r}
+#Bar graph
+ggplot(weekly_trend,aes(Month, Pickups)) + 
+    geom_bar(aes(fill = Weekday),stat = "identity",position = "dodge")+scale_fill_brewer(palette = "Set2") +ggtitle(label = "Monthly Trend by Weekday")+theme_minimal()+theme(plot.title = element_text(hjust = 0.5, lineheight = 0.8, face = "bold"))+xlab("Month")+ylab("Number of Pickups")
+```
+
+# Data Visualization by Months 3
+
+```{r}
+#subset the data so that the size is smaller, and it is easier to plot
+monthly_trend <- subset(uber_raw_data, select = c(Date, Month))
+
+#count the pickups by two cololumns: weekday and month
+monthly_trend<- ddply(monthly_trend, .(monthly_trend$Date, monthly_trend$Month), nrow)
+
+#change the column name of the new data frame
+names(monthly_trend) <- c("Date", "Month","Pickups")
+
+#Change the data type of the date column into date so that it will be easier to add breaks in x axis later in plotting
+monthly_trend$Date <- as.character.Date(monthly_trend$Date)
+monthly_trend$Date <-as.Date(monthly_trend$Date, format = "%m/%d/%Y")
+```
+
+
+
+```{r}
+#Plot
+ggplot(monthly_trend, aes(Date, Pickups))+geom_line(aes(color=Month))+ geom_smooth(method = 'loess',color="red")+scale_x_date(breaks = date_breaks("9 days"))+ggtitle(label = "Trend over the Months by Date")+theme_minimal()+theme(plot.title = element_text(hjust=0.5, lineheight = .8, face = "bold"),axis.text.x = element_text(angle=90))+ylab("Number of Pickups")
+```
+
+
+
+# Visualization by Time of the Day 1: Bar chart
+
+```{r}
+# Select the data needed for this task
+daily_trend <- subset(uber_raw_data, select = c(Time, Month))
+
+#Change the time format to simply showing the hour so that it will be easier for regrouping the file and plotting (if name of x axis is too long, it will not be clear and pretty)
+H<-format(as.POSIXct(strptime(daily_trend$Time, "%H:%M:%S", tz="")), format="%H")
+daily_trend$Time <- H
+
+#convert the time column into class time
+daily_trend$Time <- as.character.Date(daily_trend$Time, format="%H")
+
+#count the pickups by two cololumns: time and month
+daily_trend<- ddply(daily_trend, .(daily_trend$Time, daily_trend$Month), nrow)
+names(daily_trend)<- c("Hour","Month","Pickups")
+```
+
+
+```{r}
+# plot the data - bar graph
+ggplot(daily_trend, aes(Hour, Pickups, fill=Month))+geom_bar(stat = "identity")+ggtitle(label = "Trend Over Time of the Day")+theme_minimal()+theme(plot.title = element_text(hjust=0.5, lineheight = .8, face = "bold"))+xlab("Hour")+ylab("Number of Pickups")
+```
+
+# Visualization by Time of the Day 2: Line Graph
+```{r}
+#line graph
+ggplot(daily_trend, aes(Hour, Pickups, group=Month))+geom_line(aes(color=Month))+ggtitle(label = "Trend Over Time of the Day")+theme_minimal()+theme(plot.title = element_text(hjust=0.5, lineheight = .8, face = "bold"))+xlab("Hour")+ylab("Number of Pickups")
+```
+
+# Visualization by Time of the Day 3: box plot
+```{r}
+ggplot(data=daily_trend, aes(factor(Hour),Pickups))+geom_boxplot(varwidth = T, color="dodgerblue")+ggtitle(label = "Trend Over Time of the Day")+theme_minimal()+theme(plot.title = element_text(hjust=0.5, lineheight = .8, face = "bold"))+xlab("Hour")+ylab("Number of Pickups")+scale_y_continuous(breaks = seq(0,80000, by=5000))
+```
+
+#Spatial Analysis
+
+1st, load all the tools that is going to be needed in this task 
+
+```{r}
+#Load everything needed for the task
+library(evaluate)
+library(ggmap)
+require(maps)
+library(mapproj)
+library(scales)
+require(scales)
+```
+
+
+2nd, Get the map ready
+
+```{r}
+#download the map of the NYC manhattan area 
+NYC_map <- get_map(location="Manhattan", zoom=12)
+#save the visual map
+NYC <- ggmap(NYC_map)
+```
+
+## Density Plot by weekdays
+```{r}
+# Select the data needed for this task
+NYC_weekday_pickups <- subset(uber_raw_data, select = c(Lat, Lon, Weekday))
+#
+# reorder the data according to the weekdays
+NYC_weekday_pickups$Weekday<- factor(NYC_weekday_pickups$Weekday, levels=c("Monday",
+    "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday","Sunday"))
+NYC_weekday_pickups<-NYC_weekday_pickups[order(NYC_weekday_pickups$Weekday),]
+```
+
+
+```{r}
+##density 
+NYC + stat_density2d(aes(x = Lon, y = Lat, fill = ..level.., alpha=..level..), size = 8, bins = 30, alpha=0.5, data = NYC_weekday_pickups, geom = "polygon")+scale_fill_gradient(low="blue", high = "orange")+facet_wrap(~Weekday)
+```
+
+
+## Density Plot by Months
+```{r}
+# Select the data needed
+NYC_monthly_pickups <- subset(uber_raw_data, select = c(Lat, Lon, Month))
+NYC_monthly_pickups$Month<- factor(NYC_monthly_pickups$Month, levels = c("April", "May", "June", "July","August","September"))
+NYC_monthly_pickups<-NYC_monthly_pickups[order(NYC_monthly_pickups$Month),]
+```
+
+
+```{r}
+#density plotting
+NYC + stat_density2d(aes(x = Lon, y = Lat, fill = ..level.., alpha=..level..), size = 8, bins = 30, alpha=0.5, data = NYC_monthly_pickups, geom = "polygon")+scale_fill_gradient(low="blue", high = "orange")+facet_wrap(~Month)
+```
+
+
+## Density Plot by Time of the Day
+```{r}
+# select the data needed for this task
+time_plotting <- subset(uber_raw_data, select = c(Time, Lat, Lon))
+
+#Change the time format to simply showing the hour
+H<-format(as.POSIXct(strptime(time_plotting$Time, "%H:%M:%S", tz="")), format="%H")
+time_plotting$Time <- H
+```
+
+```{r}
+NYC + stat_density2d(aes(x = Lon, y = Lat, fill = ..level.., alpha=..level..), size = 8, bins = 30, alpha=0.8, data = time_plotting, geom = "polygon")+scale_fill_gradient(low="blue", high = "orange")+facet_wrap(~Time)
+```
