@@ -1,0 +1,291 @@
+---
+title: "Yeast Data Analysis"
+author: "Kerry Chu"
+output:
+  pdf_document: default
+  html_document: default
+---
+# Data Exploration
+
+##Read Data
+```{r}
+#get working directory
+wd<-getwd()
+#set working directory
+setwd(wd)
+#read yeast data from working directory
+yeast <-read.table("./yeast.data", sep = "", header = FALSE)
+#Change the column name of the dataset according to the reference list
+names(yeast) <- c("Sequence.Name", "mcg","gvh","alm","mit","erl","pox","vac","nuc","Localisation.Site")
+```
+
+##70/30
+
+###Split Data
+```{r}
+#Generate random data
+set.seed(1234)
+#split data into 70% 30%
+sep1 <- sample(2, nrow(yeast), replace=TRUE, prob=c(0.7, 0.3))
+train_data1 <- yeast[sep1==1,]
+test_data1 <- yeast[sep1==2,]
+```
+
+###Prediction
+```{r}
+#Load party, the pacakge for partitioning
+library(party)
+#set the formula
+formula <-Localisation.Site~mcg+gvh+alm+mit+erl+pox+vac+nuc
+#set training data
+yeast_ctree1<-ctree(formula, data=train_data1)
+#prediction
+table(predict(yeast_ctree1, newdata = test_data1), test_data1$Localisation.Site)
+```
+###Confusion Matrix
+```{r}
+#load caret, the package for classification and regression training
+library(caret)
+#confusion matrix
+con1<-confusionMatrix(predict(yeast_ctree1, newdata = test_data1), test_data1$Localisation.Site)
+con1
+```
+##80/20
+```{r}
+#generate random data
+set.seed(1234)
+#split data into 80% 20%
+sep2 <- sample(2, nrow(yeast), replace=TRUE, prob=c(0.8, 0.2))
+train_data2 <- yeast[sep2==1,]
+test_data2 <- yeast[sep2==2,] 
+```
+
+###Prediction 
+```{r}
+#set training data
+yeast_ctree2<-ctree(formula, data=train_data2)
+#prediction
+table(predict(yeast_ctree2, newdata = test_data2), test_data2$Localisation.Site)
+```
+###Confusion Matrix
+```{r}
+#confusion matrix
+con2<-confusionMatrix(predict(yeast_ctree2, newdata = test_data2), test_data2$Localisation.Site)
+con2
+```
+It can be seen that the 80/20 split's accuarcy is lower than that of 70/30.
+
+*(For detailed explanation please see Task 2 and Task 3 Q1 & Q3)*
+
+# Visualisation
+
+##Plot(70/30)
+```{r, fig.width=40, fig.height=12}
+plot(yeast_ctree1)
+```
+##Plot(80/20)
+```{r, fig.width=40, fig.height=12}
+plot(yeast_ctree2)
+```
+
+In general, the 80/20 split, which as 20 nodes, has more nodes than 70/30 split, which only 17 nodes. The difference in node numbers unavoidably leads to the difference of final leaf numbers. Moreover, some values in the nodes vary from each other in the 70/30 split and 80/20 split. The difference is a reflection of the statistics in the confusion matrix which can be caused by various factors. *(Please see Task 3 Question 1&3 for details)*
+
+##Heatmap(70/30)
+```{r}
+#convert result of confusion matrix (class) into data frame
+n1<-as.data.frame(con1$table)
+#normalize the Frequency of n1 to between 0 and 1 by using min-max normalization
+n1$Normalized_Frequency<-(n1$Freq-min(n1$Freq))/(max(n1$Freq)-min(n1$Freq))*(1-0)+0
+#rename the column
+names(n1)<-c("Prediction","Reference","Frequency","Normalized_Frequency")
+```
+
+```{r}
+library(ggplot2)
+library(reshape2)
+#reverse the order of y axis (Prediction)
+n1$Prediction<-with(n1,factor(Prediction,levels = rev(levels(Prediction))))
+#Plot the data
+ggplot(aes(Reference, Prediction), data=n1)+geom_tile(aes(fill=Normalized_Frequency), color="White",data=n1)+scale_fill_gradient(low="white",high="firebrick1")+ggtitle(label = "Confusion Matrix Heatmap(70/30)")+theme_minimal()+theme(plot.title = element_text(hjust = 0.5, lineheight = 0.8, face = "bold"))+xlab("Reference")+scale_x_discrete(position = "top")
+```
+
+##Heatmap(80/20)
+```{r}
+#convert result of confusion matrix (class) into data frame
+n2<-as.data.frame(con2$table)
+#normalize the Frequency of n2 to between 0 and 1 by using min-max normalization
+n2$Normalized_Frequency<-(n2$Freq-min(n2$Freq))/(max(n2$Freq)-min(n2$Freq))*(1-0)+0
+#rename the column
+names(n2)<-c("Prediction","Reference","Frequency","Normalized_Frequency")
+```
+
+
+```{r}
+#reverse the order of y axis (Prediction)
+n2$Prediction<-with(n2,factor(Prediction,levels = rev(levels(Prediction))))
+#Plot the data
+ggplot(aes(Reference, Prediction), data=n2)+geom_tile(aes(fill=Normalized_Frequency), color="White",data=n2)+scale_fill_gradient(low="white",high="limegreen")+ggtitle(label = "Confusion Matrix Heatmap(80/20)")+theme_minimal()+theme(plot.title = element_text(hjust = 0.5, lineheight = 0.8, face = "bold"))+xlab("Reference")+scale_x_discrete(position = "top")
+```
+
+# Data Analysis
+
+## Confusion Matrix Interpretation 
+
+Confusion Matrix 70/30
+```{r}
+#save the confusion matrix table as a data frame but keep the orginal format for the convenience of analysis
+cm1<-as.data.frame.matrix(con1$table)
+#count the total of FP and TP
+cm1$Total1 <-rowSums(cm1)
+#Use for loop to calculate the incidence of TP and FP
+for (i in 1:10)
+{
+  cm1$TP1[i]<-cm1[i,i]
+  cm1$FP1[i]<-cm1$Total1[i]-cm1[i,i]
+}
+#Use for loop to calculate the precision 
+for (i in 1:10)
+{
+  if(cm1$Total1[i]==0)
+  {
+    cm1$Precision1[i]=0
+  }
+  else
+  {
+      cm1$Precision1[i]<-cm1$TP1[i]/cm1$Total1[i]
+  }
+}
+#subset useful columns for later comparision
+acm1<-subset(cm1,select=c(TP1,FP1,Total1,Precision1))
+```
+
+Confusion Matrix 80/20
+```{r}
+#save the confusion matrix table as a data frame but keep the orginal format for the convenience of analysis
+cm2<-as.data.frame.matrix(con2$table)
+#count the total of FP and TP
+cm2$Total2 <-rowSums(cm2)
+#Use for loop to calculate the incidence of TP and FP
+for (i in 1:10)
+{
+  cm2$TP2[i]<-cm2[i,i]
+  cm2$FP2[i]<-cm2$Total2[i]-cm2[i,i]
+}
+#Use for loop to calculate the precision 
+for (i in 1:10)
+{
+  if(cm2$Total2[i]==0)
+  {
+    cm2$Precision2[i]=0
+  }
+  else
+  {
+      cm2$Precision2[i]<-cm2$TP2[i]/cm2$Total2[i]
+  }
+}
+#subset useful columns for later comparision
+acm2<-subset(cm2,select=c(TP2,FP2,Total2,Precision2))
+```
+
+```{r}
+#show comparison results
+compare_con<-cbind(acm1,acm2)
+compare_con
+```
+Generally, the **Accuracy** of 70/30 split(0.5926) is higher than 80/20 split ( 0.5786) as it is shown in Task 1. The table above shows a detailed comparison between the two splits. 
+
+The total number of TP and FP of each independent variables varies between the two splits because of the difference of the test data. Also because of the size of test data, the number of FP and TP of 70/30 is significantly higher than 80/20. That's why the author thinks that a comparison of precision is needed. Overall, most of the precisions of independent classes of 70/30 are slightly higher than those of 80/20. However, the 80/20 precisions of some independent variables are actually higher than 70/30, for example, ME2, ME3, etc.
+
+
+*(Please see task 3 Q3 to see the explanation of the cause.)*
+
+## Classifier Effectiveness Analysis 
+
+When looking at the yeast dataset for the first time, only two columns are worth of considering: the first column---**sequence number** and the last column---**Localisation Site**. The rest of columns are the result of different signal measurements of the cell or scores of discriminant analysis of different proteins.
+
+The choice between the two potential classifiers is obvious even for those who do not have biology domain knowledge. The idea of classification is to group data into different sets. **Sequence Name** is very unique, since almost every row has its own unique sequence name. *(See below)*
+
+```{r}
+summary(yeast$Sequence.Name)
+```
+
+On the contrary, **Localization Site** only has a certain number of unique elements in the column and each represent multiple rows.*(Also can be seen from the summary below)*
+
+```{r}
+summary(yeast$Localisation.Site)
+```
+
+However, in the spirit of science, some researches have been done by the author. This project is actually doing **Protein Subsecelluar Localization Prediction** whose definition is stated as follows: 
+
+*"Protein subcellular localization prediction (or just protein localization prediction) involves the prediction of where a protein resides in a cell, its subcellular localization.In general, prediction tools take as input information about a protein, such as a protein sequence of amino acids, and produce a predicted location within the cell as output, such as the nucleus, Endoplasmic reticulum, Golgi apparatus, extracellular space, or other organelles. The aim is to build tools that can accurately predict the outcome of protein targeting in cells."*
+
+From the paragraph above, it is clear that the columns in between the first and last column work as input information to build the predicting model to predict the location within the cells. But what is **Accession Number**?  
+
+*"In libraries, art galleries, museums and archives, initial control of an acquisition is usually achieved through assignment of a unique identifier. When used for this purpose, such an identifier is denoted an accession number. Assignment of accession numbers typically occurs at the point of accessioning or cataloging. The term is something of a misnomer, because the form accession numbers take is often alpha-numeric."*
+
+All of these prove that **Localization Site** is the best choice to be the classifier. The classifier is definitely effective even though the prediction accuracy is not very satisfiable due to the distribution of class variables. *(See the next section below)*
+
+
+## Prediction Analysis 
+
+The prediction is made by:
+1st, generate random data by using set.seed()
+2nd, split data to 2 sample size 
+3rd, create formula
+4th, use ctree to train data 
+5th, predict data by using test data
+
+However, as it is said in ctree plot comments and Task 3 Q1, the prediction results are slightly different but both with relatively low accuracy and precision. The initial assumption of the author about which factors lead to the result and difference include:
+
+1. dataset size
+2. set.seed() function
+3. distribution of classes
+
+**Not set.seed()**
+First, the author removed the second assumption set.seed() by exploring the functionality of set.seed() in R, it is just used to generate fixed random data so that other researchers could reproduce the result.
+
+**Not Dataset Size**
+Originally, the author thought may be it is because that the dataset is too small and therefore there's not enough data to train the machine to be more accurate. 
+
+However, this is proved to be wrong. 
+
+```{r iris}
+nrow(iris) 
+```
+
+```{r iris species prediction}
+set.seed(1234)
+ind <- sample(2, nrow(iris), replace=TRUE, prob=c(0.7, 0.3))
+itrain_data <- iris[ind==1,]
+itest_data <- iris[ind==2,]
+i_formula <- Species ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width
+iris_ctree <- ctree(i_formula, data = itrain_data)
+confusionMatrix(predict(iris_ctree, newdata = itest_data), itest_data$Species)
+```
+As it can be seen, iris dataset only has 150 rows which is much smaller than the yeast dataset which has 1484 rows. However, the accuracy of the iris is much higher.Therefore, the size of dataset is not a factor that influence the Accuracy. 
+
+**Yes, Class Distribution**
+In order to test the difference of two split, the author also split the iris dataset into 80/20
+
+```{r}
+set.seed(1234)
+ind2 <- sample(2, nrow(iris), replace=TRUE, prob=c(0.8, 0.2))
+itrain_data2 <- iris[ind2==1,]
+itest_data2 <- iris[ind2==2,]
+iris_ctree2 <- ctree(i_formula, data = itrain_data2)
+confusionMatrix(predict(iris_ctree, newdata = itest_data2), itest_data2$Species)
+```
+As it is shown above, the 80/20 split has higher accuracy, which is close to intuitive thinking: with more training data, the predictive model should be more accurate. But why is the case of yeast data so counter-intuitive? (The 80/20 split has lower accuracy than 70/30). Let's see the class distribution of iris
+
+```{r}
+summary(iris$Species)
+```
+Compare with yeast class distribution
+```{r}
+summary(yeast$Localisation.Site)
+```
+As it is shown above, the iris distribution is very balanced with each species has 50 data points. On the contrary, the yeast class distribution is very unbalanced with some classes have as many as hundreds of data points and some only has 5. 
+
+This unbalance is reflected in the ctree plot in Task 2 and TP FP comparison. ERL does not even have any prediction since it only has 5 data points and in 70/30 split VAC don't have any prediction at all but in 80/20 it has 4 FP, POX has 3 TP in 70/30 then the number dropped to only 2 in 80/20.
+
+In conclusion, class distribution is the most significant factor that affects the accuracy, precision and different result in 70/30 and 80/20 split.
